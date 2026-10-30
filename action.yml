@@ -91,7 +91,7 @@ runs:
 
     - name: Get atmos settings
       id: atmos-settings
-      uses: cloudposse/github-action-atmos-get-setting@v2
+      uses: 9spokes/github-action-atmos-get-setting@v1
       with:
         # Here we do not process-templates because that requires terraform. Which we install after fetching the version
         # processing templates here can cause an issue where cached terraform versions conflict with the version we want to install
