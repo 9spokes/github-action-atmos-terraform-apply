@@ -59,6 +59,13 @@ inputs:
     description: Atmos auth identity
     required: false
     default: ""
+  github-oidc-audience:
+    description: >-
+      Audience of the GitHub OIDC token fetched (with retries) before each atmos command and
+      passed to atmos as ACTIONS_ID_TOKEN. Must match the github/oidc provider's spec.audience
+      in atmos auth config. Empty (the default) leaves atmos to fetch the token itself.
+    required: false
+    default: ""
 outputs:
   status:
     description: Apply Status. Either 'succeeded' or 'failed'
@@ -366,6 +373,8 @@ runs:
       if: env.ACTIONS_ENABLED == 'true' && inputs.skip-plandiff != 'true'
       id: plan-diff
       shell: bash
+      env:
+        GITHUB_OIDC_AUDIENCE: ${{ inputs.github-oidc-audience }}
       run: |
         set +e
 
@@ -380,7 +389,9 @@ runs:
           base_cmd+=" --identity=${{ inputs.identity }}"
         fi
 
+        source "${GITHUB_ACTION_PATH}/scripts/github-oidc-prefetch.sh"
 
+        github_oidc_prefetch "${GITHUB_OIDC_AUDIENCE}"
         tfcmt \
           --config "${GITHUB_ACTION_PATH}/config/atmos_plan_summary.yaml" \
           -var "target:${{ inputs.stack }}-${{ inputs.component }}" \
@@ -414,6 +425,7 @@ runs:
 
         if [[ "${{ inputs.plan-storage }}" == "true" ]]; then
 
+          github_oidc_prefetch "${GITHUB_OIDC_AUDIENCE}"
           atmos terraform plan-diff ${{ inputs.component }} \
             --stack ${{ inputs.stack }} \
             ${base_cmd} \
@@ -525,6 +537,8 @@ runs:
       if: env.ACTIONS_ENABLED == 'true' && (inputs.skip-plandiff == 'true' || steps.plan-diff.outputs.plan_changed == 'false')
       id: apply
       shell: bash
+      env:
+        GITHUB_OIDC_AUDIENCE: ${{ inputs.github-oidc-audience }}
       run: |
         set +e
 
@@ -539,6 +553,9 @@ runs:
           SKIP_INIT_FLAG="--skip-init"
         fi
 
+        source "${GITHUB_ACTION_PATH}/scripts/github-oidc-prefetch.sh"
+
+        github_oidc_prefetch "${GITHUB_OIDC_AUDIENCE}"
         tfcmt \
           --config "${GITHUB_ACTION_PATH}/config/atmos_github_summary.yaml" \
           -var "target:${{ inputs.stack }}-${{ inputs.component }}" \
@@ -566,13 +583,20 @@ runs:
         set -e
                 
         cat "${TERRAFORM_OUTPUT_FILE}"
-        atmos terraform output ${{ inputs.component }} \
+
+        # The outputs only feed the step summary: failing to read them must not fail an apply
+        # that has already run. terraform-docs below needs a JSON file either way.
+        github_oidc_prefetch "${GITHUB_OIDC_AUDIENCE}"
+        if ! atmos terraform output ${{ inputs.component }} \
           --stack ${{ inputs.stack }} \
           ${base_cmd} \
           --skip-init -- -json -compact-warnings -no-color  | \
           grep -v 'Switched to workspace' | \
           awk '$1~/^Warnings:$/ {exit} {print}' | \
-          grep -v 'WARN detected' 1> ${{ steps.vars.outputs.component_path }}/output_values.json        
+          grep -v 'WARN detected' 1> ${{ steps.vars.outputs.component_path }}/output_values.json; then
+          echo "::warning::atmos terraform output failed; the summary will not list outputs. The apply result is unaffected."
+          echo '{}' > ${{ steps.vars.outputs.component_path }}/output_values.json
+        fi
 
         cd ${{ steps.vars.outputs.component_path }}
         terraform-docs -c ${GITHUB_ACTION_PATH}/config/tfdocs-config.yaml --output-file ${GITHUB_WORKSPACE}/atmos-apply-summary.md ./
