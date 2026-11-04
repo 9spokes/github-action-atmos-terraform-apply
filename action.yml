@@ -373,6 +373,8 @@ runs:
       if: env.ACTIONS_ENABLED == 'true' && inputs.skip-plandiff != 'true'
       id: plan-diff
       shell: bash
+      env:
+        GITHUB_OIDC_AUDIENCE: ${{ inputs.github-oidc-audience }}
       run: |
         set +e
 
@@ -389,7 +391,7 @@ runs:
 
         source "${GITHUB_ACTION_PATH}/scripts/github-oidc-prefetch.sh"
 
-        github_oidc_prefetch "${{ inputs.github-oidc-audience }}"
+        github_oidc_prefetch "${GITHUB_OIDC_AUDIENCE}"
         tfcmt \
           --config "${GITHUB_ACTION_PATH}/config/atmos_plan_summary.yaml" \
           -var "target:${{ inputs.stack }}-${{ inputs.component }}" \
@@ -423,7 +425,7 @@ runs:
 
         if [[ "${{ inputs.plan-storage }}" == "true" ]]; then
 
-          github_oidc_prefetch "${{ inputs.github-oidc-audience }}"
+          github_oidc_prefetch "${GITHUB_OIDC_AUDIENCE}"
           atmos terraform plan-diff ${{ inputs.component }} \
             --stack ${{ inputs.stack }} \
             ${base_cmd} \
@@ -535,6 +537,8 @@ runs:
       if: env.ACTIONS_ENABLED == 'true' && (inputs.skip-plandiff == 'true' || steps.plan-diff.outputs.plan_changed == 'false')
       id: apply
       shell: bash
+      env:
+        GITHUB_OIDC_AUDIENCE: ${{ inputs.github-oidc-audience }}
       run: |
         set +e
 
@@ -551,7 +555,7 @@ runs:
 
         source "${GITHUB_ACTION_PATH}/scripts/github-oidc-prefetch.sh"
 
-        github_oidc_prefetch "${{ inputs.github-oidc-audience }}"
+        github_oidc_prefetch "${GITHUB_OIDC_AUDIENCE}"
         tfcmt \
           --config "${GITHUB_ACTION_PATH}/config/atmos_github_summary.yaml" \
           -var "target:${{ inputs.stack }}-${{ inputs.component }}" \
@@ -582,7 +586,7 @@ runs:
 
         # The outputs only feed the step summary: failing to read them must not fail an apply
         # that has already run. terraform-docs below needs a JSON file either way.
-        github_oidc_prefetch "${{ inputs.github-oidc-audience }}"
+        github_oidc_prefetch "${GITHUB_OIDC_AUDIENCE}"
         if ! atmos terraform output ${{ inputs.component }} \
           --stack ${{ inputs.stack }} \
           ${base_cmd} \
