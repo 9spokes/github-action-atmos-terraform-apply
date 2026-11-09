@@ -200,7 +200,10 @@ runs:
     - name: Install Dependencies
       uses: cloudposse-github-actions/install-gh-releases@v1
       with:
-        cache: true
+        # Keep false. This job runs with apply credentials, and jobs that run
+        # pull-request code can write any Actions cache key it would restore.
+        # Same rule for .terraform: this action restores nothing from the cache.
+        cache: false
         config: |-
           opentofu/opentofu: 
             tag: ${{ startsWith(fromJson(steps.atmos-settings.outputs.settings).opentofu-version, 'v') && fromJson(steps.atmos-settings.outputs.settings).opentofu-version || format('v{0}', fromJson(steps.atmos-settings.outputs.settings).opentofu-version) }}
@@ -253,7 +256,6 @@ runs:
         COMPONENT_PATH=$( realpath ${{ fromJson(steps.atmos-settings.outputs.settings).component-path }})
         COMPONENT_NAME=$(echo "${{ inputs.component }}" | sed 's#/#_#g')
         COMPONENT_SLUG="$STACK_NAME-$COMPONENT_NAME"
-        COMPONENT_CACHE_KEY=$(basename "${{ fromJson(steps.atmos-settings.outputs.settings).component-path }}")
         PLAN_FILENAME="$COMPONENT_SLUG.planfile"
         PLAN_FILE="${COMPONENT_PATH}/${PLAN_FILENAME}"
         RETRIEVED_PLAN_FILENAME="$COMPONENT_SLUG-${{ inputs.sha }}.planfile"
@@ -266,7 +268,6 @@ runs:
         echo "component_name=$COMPONENT_NAME" >> $GITHUB_OUTPUT
         echo "component_slug=$COMPONENT_SLUG" >> $GITHUB_OUTPUT
         echo "component_path=${COMPONENT_PATH}" >> $GITHUB_OUTPUT
-        echo "cache-key=${COMPONENT_CACHE_KEY}" >> $GITHUB_OUTPUT
         echo "plan_filename=$PLAN_FILENAME" >> $GITHUB_OUTPUT
         echo "plan_file=$PLAN_FILE" >> $GITHUB_OUTPUT
         echo "retrieved_plan_filename=$RETRIEVED_PLAN_FILENAME" >> $GITHUB_OUTPUT
@@ -359,15 +360,6 @@ runs:
         role-to-assume: ${{ fromJson(steps.atmos-settings.outputs.settings).terraform-apply-role }}
         role-session-name: "atmos-terraform-apply-gitops"
         mask-aws-account-id: "no"
-
-    - name: Cache .terraform
-      id: cache
-      uses: actions/cache@v4
-      if: env.ACTIONS_ENABLED == 'true'
-      with:
-        path: |
-          ${{ steps.vars.outputs.component_path }}/.terraform
-        key: ${{ steps.vars.outputs.cache-key }}
 
     - name: Plan prepare
       if: env.ACTIONS_ENABLED == 'true' && inputs.skip-plandiff != 'true'
